@@ -12,21 +12,6 @@ import TitleBar from "@/components/layout/TitleBar.vue";
 </script>
 
 <style>
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: #edf2fb;
-  font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
-}
-
-#app {
-  width: 100%;
-  height: 100vh;
-}
-
 .app-shell {
   width: 100%;
   height: 100vh;

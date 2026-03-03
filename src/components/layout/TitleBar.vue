@@ -6,22 +6,48 @@
     </div>
 
     <div class="window-controls">
-      <button class="control-button" type="button" title="最小化" @click="minimizeWindow">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M20 14H4v-2h16z" />
+      <button
+        class="control-button"
+        type="button"
+        aria-label="最小化窗口"
+        :disabled="isWindowCommandPending"
+        @click="minimizeWindow"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M6 12.5h12" />
         </svg>
       </button>
-      <button class="control-button" type="button" :title="isMaximized ? '还原' : '最大化'" @click="toggleMaximize">
-        <svg v-if="!isMaximized" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M5 5h14v14H5zM7 7v10h10V7z" />
+      <button
+        class="control-button"
+        type="button"
+        :aria-label="isMaximized ? '还原窗口' : '最大化窗口'"
+        :disabled="isWindowCommandPending"
+        @click="toggleMaximize"
+      >
+        <svg
+          v-if="!isMaximized"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <rect x="6.5" y="6.5" width="11" height="11" rx="2.5" />
         </svg>
-        <svg v-else viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M8 8h11v11H8zM5 5h11v2H7v9H5z" />
+        <svg v-else viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <rect x="8.5" y="8.5" width="10" height="10" rx="2.2" />
+          <path d="M5.5 6.2c0-.4.3-.7.7-.7h8.6" />
+          <path d="M5.5 6.9v8.6c0 .4.3.7.7.7" />
         </svg>
       </button>
-      <button class="control-button close-button" type="button" title="关闭" @click="closeWindow">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7 4.3 4.3l6.3 6.3 6.3-6.3z" />
+      <button
+        class="control-button close-button"
+        type="button"
+        aria-label="关闭窗口"
+        :disabled="isWindowCommandPending"
+        @click="closeWindow"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="m7 7 10 10" />
+          <path d="m17 7-10 10" />
         </svg>
       </button>
     </div>
@@ -29,42 +55,97 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 const appWindow = getCurrentWebviewWindow();
 const isMaximized = ref(false);
+const isWindowCommandPending = ref(false);
 let unlistenResize: (() => void) | null = null;
+let resizeSyncTimer: ReturnType<typeof setTimeout> | null = null;
+let isSyncingMaximizedState = false;
+let isUnmounted = false;
 
 const syncMaximizedState = async () => {
+  if (isUnmounted) {
+    return;
+  }
+  if (isSyncingMaximizedState) {
+    return;
+  }
+  isSyncingMaximizedState = true;
   try {
-    isMaximized.value = await appWindow.isMaximized();
+    const maximized = await appWindow.isMaximized();
+    if (maximized !== isMaximized.value) {
+      isMaximized.value = maximized;
+    }
   } catch {
     // noop
+  } finally {
+    isSyncingMaximizedState = false;
+  }
+};
+
+const scheduleSyncMaximizedState = () => {
+  if (resizeSyncTimer) {
+    clearTimeout(resizeSyncTimer);
+  }
+  resizeSyncTimer = setTimeout(() => {
+    resizeSyncTimer = null;
+    void syncMaximizedState();
+  }, 120);
+};
+
+const runWindowCommand = async (command: () => Promise<void>) => {
+  if (isWindowCommandPending.value || isUnmounted) {
+    return;
+  }
+  isWindowCommandPending.value = true;
+  try {
+    await command();
+  } catch (error) {
+    console.error("[TitleBar] window command failed", error);
+  } finally {
+    isWindowCommandPending.value = false;
   }
 };
 
 const minimizeWindow = async () => {
-  await appWindow.minimize();
+  await runWindowCommand(async () => {
+    await appWindow.minimize();
+  });
 };
 
 const toggleMaximize = async () => {
-  await appWindow.toggleMaximize();
-  await syncMaximizedState();
+  await runWindowCommand(async () => {
+    await appWindow.toggleMaximize();
+    await syncMaximizedState();
+  });
 };
 
 const closeWindow = async () => {
-  await appWindow.close();
+  await runWindowCommand(async () => {
+    await appWindow.close();
+  });
 };
 
 onMounted(async () => {
   await syncMaximizedState();
-  unlistenResize = await appWindow.onResized(async () => {
-    await syncMaximizedState();
+  const unlisten = await appWindow.onResized(() => {
+    scheduleSyncMaximizedState();
   });
+  if (isUnmounted) {
+    unlisten();
+    return;
+  }
+  unlistenResize = unlisten;
 });
 
 onUnmounted(() => {
+  isUnmounted = true;
+  if (resizeSyncTimer) {
+    clearTimeout(resizeSyncTimer);
+    resizeSyncTimer = null;
+  }
   if (unlistenResize) {
     unlistenResize();
     unlistenResize = null;
@@ -78,9 +159,11 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: linear-gradient(180deg, #f9fbff 0%, #f1f4fa 100%);
-  border-bottom: 1px solid #d8e0ef;
+  padding: 0 8px 0 10px;
+  background: linear-gradient(180deg, #f9fbff 0%, #f2f5fb 100%);
+  border-bottom: 1px solid #dbe3f0;
   user-select: none;
+  box-shadow: 0 1px 0 rgba(18, 31, 54, 0.03);
 }
 
 .drag-region {
@@ -88,15 +171,15 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 12px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .app-mark {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  background: linear-gradient(135deg, #2f6df5 0%, #6496ff 100%);
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #3c77f5 0%, #6ea0ff 100%);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -105,50 +188,80 @@ onUnmounted(() => {
 }
 
 .app-title {
-  font-size: 13px;
-  color: #2b3342;
-  letter-spacing: 0.2px;
+  font-size: 12px;
+  color: #293548;
+  letter-spacing: 0.1px;
+  font-weight: 500;
+  opacity: 0.95;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .window-controls {
-  height: 100%;
   display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 2px;
+  padding: 2px 0;
 }
 
 .control-button {
-  width: 46px;
-  height: 100%;
-  border: none;
+  width: 32px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
   background: transparent;
-  color: #4f5b70;
+  color: #52617a;
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.control-button:disabled {
+  opacity: 0.65;
+  cursor: default;
 }
 
 .control-button svg {
-  width: 14px;
-  height: 14px;
-  fill: currentColor;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }
 
 .control-button:hover {
-  background: #e7edf9;
-  color: #1f2a3d;
+  background: #e9eef8;
+  border-color: #d3ddef;
+  color: #24334b;
 }
 
 .control-button:active {
-  background: #dbe5f6;
+  background: #dde6f6;
+}
+
+.control-button:focus-visible {
+  outline: none;
+  border-color: #9fb4db;
+  box-shadow: 0 0 0 2px rgba(120, 154, 210, 0.25);
 }
 
 .close-button:hover {
-  background: #e81123;
+  background: #e84a5f;
+  border-color: #de3a52;
   color: #fff;
 }
 
 .close-button:active {
-  background: #c50f1f;
+  background: #d93c51;
   color: #fff;
 }
 </style>

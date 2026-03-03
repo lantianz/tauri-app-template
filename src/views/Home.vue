@@ -1,5 +1,5 @@
 <template>
-  <main class="home">
+  <main class="home flex-col">
     <h1>Hello World</h1>
     <p>Count: {{ count }}</p>
     <div class="actions">
@@ -43,8 +43,16 @@ const { count } = storeToRefs(counterStore);
   position: fixed;
   inset: 40px 0 0;
   background:
-    radial-gradient(circle at 20% 20%, rgba(84, 130, 255, 0.16), transparent 40%),
-    radial-gradient(circle at 80% 10%, rgba(120, 180, 255, 0.12), transparent 34%);
+    radial-gradient(
+      circle at 20% 20%,
+      rgba(84, 130, 255, 0.16),
+      transparent 40%
+    ),
+    radial-gradient(
+      circle at 80% 10%,
+      rgba(120, 180, 255, 0.12),
+      transparent 34%
+    );
   pointer-events: none;
 }
 
