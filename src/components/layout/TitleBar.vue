@@ -1,8 +1,8 @@
 <template>
   <header class="title-bar">
     <div class="drag-region" data-tauri-drag-region>
-      <div class="app-mark">T</div>
-      <span class="app-title">TauriApp</span>
+      <div class="app-mark" data-tauri-drag-region>T</div>
+      <span class="app-title" data-tauri-drag-region>TauriApp</span>
     </div>
 
     <div class="window-controls">
