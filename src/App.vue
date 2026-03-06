@@ -20,7 +20,7 @@ import TitleBar from "@/components/layout/TitleBar.vue";
 }
 
 .app-content {
-  height: calc(100vh - 40px);
+  height: calc(100vh - var(--title-bar-height));
   overflow: auto;
 }
 </style>

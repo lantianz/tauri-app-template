@@ -14,8 +14,21 @@ $tauriConf   = "src-tauri/tauri.conf.json"
 $cargoToml   = "src-tauri/Cargo.toml"
 $bundlePath  = "src-tauri/target/release/bundle"
 
+function Write-Utf8File {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    $resolvedPath = (Resolve-Path $Path).Path
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($resolvedPath, $Content, $utf8NoBom)
+}
+
 function Invoke-BumpVersion {
-    $pkg = Get-Content $packageJson -Raw | ConvertFrom-Json
+    $pkg = Get-Content $packageJson -Raw -Encoding UTF8 | ConvertFrom-Json
     $current = $pkg.version
     $newVersion = Read-Host "请输入新版本号 (x.y.z，回车跳过)"
 
@@ -34,17 +47,38 @@ function Invoke-BumpVersion {
         return $false
     }
 
-    $pkgContent = Get-Content $packageJson -Raw
-    $pkgContent = $pkgContent -replace '"version"\s*:\s*"[^"]*"', "`"version`": `"$newVersion`""
-    Set-Content $packageJson -Value $pkgContent -NoNewline
+    $pkg.version = $newVersion
+    $pkgContent = ($pkg | ConvertTo-Json -Depth 100) + "`n"
+    Write-Utf8File -Path $packageJson -Content $pkgContent
 
-    $tauriContent = Get-Content $tauriConf -Raw
-    $tauriContent = $tauriContent -replace '"version"\s*:\s*"[^"]*"', "`"version`": `"$newVersion`""
-    Set-Content $tauriConf -Value $tauriContent -NoNewline
+    $tauriConfig = Get-Content $tauriConf -Raw -Encoding UTF8 | ConvertFrom-Json
+    $tauriConfig.version = $newVersion
+    $tauriContent = ($tauriConfig | ConvertTo-Json -Depth 100) + "`n"
+    Write-Utf8File -Path $tauriConf -Content $tauriContent
 
-    $cargoContent = Get-Content $cargoToml -Raw
-    $cargoContent = $cargoContent -replace '(?m)^(version\s*=\s*)"[^"]*"', "`${1}`"$newVersion`""
-    Set-Content $cargoToml -Value $cargoContent -NoNewline
+    $cargoLines = Get-Content $cargoToml -Encoding UTF8
+    $inPackageSection = $false
+    $versionUpdated = $false
+    for ($i = 0; $i -lt $cargoLines.Count; $i++) {
+        $line = $cargoLines[$i]
+        if ($line -match '^\s*\[package\]\s*$') {
+            $inPackageSection = $true
+            continue
+        }
+        if ($inPackageSection -and $line -match '^\s*\[[^\]]+\]\s*$') {
+            $inPackageSection = $false
+        }
+        if ($inPackageSection -and -not $versionUpdated -and $line -match '^\s*version\s*=\s*"[^"]*"\s*$') {
+            $cargoLines[$i] = "version = `"$newVersion`""
+            $versionUpdated = $true
+        }
+    }
+    if (-not $versionUpdated) {
+        Write-Host "未找到 [package] 下的 version 字段，无法更新 Cargo.toml" -ForegroundColor Red
+        exit 1
+    }
+    $cargoContent = ($cargoLines -join "`n") + "`n"
+    Write-Utf8File -Path $cargoToml -Content $cargoContent
 
     Write-Host "版本号已更新为 $newVersion" -ForegroundColor Green
     return $true

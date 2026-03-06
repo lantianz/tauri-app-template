@@ -17,7 +17,6 @@ dist-ssr
 
 # Tauri / Rust
 src-tauri/target
-src-tauri/Cargo.lock
 
 # Editor directories and files
 .vscode/*
@@ -29,6 +28,3 @@ src-tauri/Cargo.lock
 *.njsproj
 *.sln
 *.sw?
-
-# lock
-package-lock.json

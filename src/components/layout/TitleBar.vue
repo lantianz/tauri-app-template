@@ -155,7 +155,7 @@ onUnmounted(() => {
 
 <style scoped>
 .title-bar {
-  height: 40px;
+  height: var(--title-bar-height);
   display: flex;
   justify-content: space-between;
   align-items: center;

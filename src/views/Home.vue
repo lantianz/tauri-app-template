@@ -41,7 +41,7 @@ const { count } = storeToRefs(counterStore);
 .home::before {
   content: "";
   position: fixed;
-  inset: 40px 0 0;
+  inset: var(--title-bar-height) 0 0;
   background:
     radial-gradient(
       circle at 20% 20%,
